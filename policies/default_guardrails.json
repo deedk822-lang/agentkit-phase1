@@ -1,0 +1,106 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-10-27T23:15:00Z",
+  "policies": {
+    "spend_cap": {
+      "name": "Ad Spend Cap Policy",
+      "severity": "MEDIUM",
+      "enabled": true,
+      "rules": {
+        "max_daily_spend": 100.00,
+        "max_campaign_spend": 500.00,
+        "require_approval_above": 50.00,
+        "auto_pause_threshold": 200.00
+      },
+      "violations": {
+        "notification_channels": ["slack", "email"],
+        "auto_actions": ["pause_campaign", "create_issue"]
+      }
+    },
+    "report_format": {
+      "name": "Allowed Report Formats",
+      "severity": "LOW",
+      "enabled": true,
+      "rules": {
+        "allowed_formats": ["pdf", "html", "json"],
+        "max_report_size_mb": 10,
+        "retention_days": 30
+      }
+    },
+    "threat_response": {
+      "name": "Threat Response Automation",
+      "severity": "HIGH",
+      "enabled": true,
+      "rules": {
+        "auto_block_threshold": 8,
+        "require_human_review_above": 9,
+        "max_auto_actions_per_hour": 10,
+        "escalation_severity": 7
+      },
+      "actions": {
+        "low_severity": ["log", "monitor"],
+        "medium_severity": ["alert", "investigate"],
+        "high_severity": ["block", "escalate", "create_incident"]
+      }
+    },
+    "api_usage": {
+      "name": "API Usage Limits",
+      "severity": "MEDIUM",
+      "enabled": true,
+      "rules": {
+        "max_requests_per_minute": 100,
+        "max_tokens_per_hour": 50000,
+        "cost_cap_per_day": 25.00,
+        "rate_limit_threshold": 0.8
+      }
+    },
+    "data_privacy": {
+      "name": "Data Privacy Controls",
+      "severity": "HIGH",
+      "enabled": true,
+      "rules": {
+        "store_pii": false,
+        "log_retention_days": 90,
+        "anonymize_after_days": 30,
+        "gdpr_compliant": true,
+        "data_export_available": true
+      }
+    }
+  },
+  "feature_flags": {
+    "kill_switch": {
+      "enabled": false,
+      "description": "Emergency stop for all autonomous actions"
+    },
+    "rollout_percent": {
+      "value": 25,
+      "description": "Percentage of commands to process (gradual rollout)"
+    },
+    "debug_mode": {
+      "enabled": false,
+      "description": "Enhanced logging and validation checks"
+    },
+    "auto_remediation": {
+      "enabled": true,
+      "description": "Allow autonomous threat remediation"
+    }
+  },
+  "compliance": {
+    "rule_1": {
+      "description": "Only authorized agents: user, assistant, cursor background",
+      "verified": true,
+      "enforcement": "STRICT"
+    },
+    "gdpr": {
+      "compliant": true,
+      "data_retention": "90 days",
+      "right_to_deletion": true
+    },
+    "security_standards": {
+      "encryption_at_rest": true,
+      "encryption_in_transit": true,
+      "access_logging": true,
+      "audit_trail": true
+    }
+  }
+}
