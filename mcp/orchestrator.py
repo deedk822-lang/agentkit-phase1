@@ -182,20 +182,7 @@ Respond with JSON: {{"score": 0.0-1.0, "rationale": "reasoning", "approved": tru
 class ToolExecutor:
     def _call_apps_script(self, action: str, params: Dict) -> Dict:
         if not APPS_SCRIPT_URL:
-            # Simulate responses for different actions during local testing
-            if action == "get_integration_status":
-                return {
-                    "status": "success",
-                    "integration_status": "CONNECTED",
-                    "last_checked": datetime.utcnow().isoformat()
-                }
-            if action == "refresh_token":
-                return {
-                    "status": "success",
-                    "message": f"Token for {params.get('service')} refreshed successfully.",
-                    "new_token_expires_in": 3600
-                }
-            return {"status": "simulated", "message": f"Apps Script URL not configured for action: {action}"}
+            return {"status": "simulated", "message": "Apps Script URL not configured"}
 
         payload = {"action": action, **params}
         try:
@@ -208,10 +195,6 @@ class ToolExecutor:
     
     def execute_scan_site(self, domain: str) -> Dict:
         return {"domain": domain, "grade": "A", "status": "simulated"}
-
-    def execute_publish_report(self, client: str, dataset: str, format: str) -> Dict:
-        """Simulates publishing a report."""
-        return {"client": client, "dataset": dataset, "format": format, "status": "published"}
     
     def execute_start_campaign(self, channel: str, campaign_id: str) -> Dict:
         logger.info(f"Initiating campaign {campaign_id} on {channel} via Apps Script...")
@@ -240,11 +223,9 @@ class ActionOrchestrator:
         self.validator = GroqValidator(GROQ_API_KEY) if GROQ_API_KEY else None
         self.judge = MistralJudge(MISTRAL_API_KEY) if MISTRAL_API_KEY else None
         self.executor = ToolExecutor()
-        self.action_cache: Dict[str, Dict] = {}
         
         self.tool_map = {
             "SCAN_SITE": self.executor.execute_scan_site,
-            "PUBLISH_REPORT": self.executor.execute_publish_report,
             "START_CAMPAIGN": self.executor.execute_start_campaign,
             "CHECK_INTEGRATION_STATUS": self.executor.execute_check_integration_status,
             "REFRESH_TOKEN": self.executor.execute_refresh_token,
@@ -275,13 +256,6 @@ class ActionOrchestrator:
         return default_policies.get(command_type, {})
     
     def execute_action(self, action_id: str, command_type: str, params: Dict, severity: Severity) -> Dict:
-        # Step 1: Idempotency Check
-        if action_id in self.action_cache:
-            cached_result = self.action_cache[action_id].copy()
-            cached_result["status"] = "SUCCESS_CACHED"
-            cached_result["rationale"] = "Action result retrieved from cache."
-            return cached_result
-
         result = {
             "action_id": action_id,
             "command_type": command_type,
@@ -290,7 +264,7 @@ class ActionOrchestrator:
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        # Step 2: Policy Pre-Check
+        # Step 1: Policy Pre-Check
         policy_rules = self._get_policies_for_command(command_type)
         if policy_rules.get("action") == "BLOCK":
             result["status"] = ActionResult.BLOCKED.value
@@ -342,7 +316,6 @@ class ActionOrchestrator:
             result["status"] = ActionResult.SUCCESS.value
             if not result.get("rationale"):
                 result["rationale"] = "Action completed successfully"
-            self.action_cache[action_id] = result.copy()
         except Exception as e:
             logger.error(f"Tool execution failed for {action_id}: {e}", exc_info=True)
             result["status"] = ActionResult.FAILED.value
