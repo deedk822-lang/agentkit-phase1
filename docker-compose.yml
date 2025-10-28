@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # Redis for distributed locking and caching
+  redis:
+    image: redis:7-alpine
+    container_name: agentkit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # MCP Orchestrator - Command validation and execution
+  mcp-orchestrator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator
+    container_name: agentkit-orchestrator
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=8080
+      # API keys - set these in .env or environment
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - MCP_PRIVATE_KEY=${MCP_PRIVATE_KEY:-dev-key-change-in-prod}
+      - APPS_SCRIPT_URL=${APPS_SCRIPT_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Command Poller - High availability with multiple replicas
+  command-poller:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.poller
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MCP_BASE_URL=http://mcp-orchestrator:8080
+      # Secrets - set these in .env or environment
+      - NOTION_TOKEN=${NOTION_TOKEN}
+      - GOOGLE_DOC_ID=${GOOGLE_DOC_ID}
+      - MCP_PRIVATE_KEY=${MCP_PRIVATE_KEY:-dev-key-change-in-prod}
+    depends_on:
+      mcp-orchestrator:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 3  # High availability with 3 replicas
+    restart: unless-stopped
+
+  # Quantum Observer - Security monitoring (optional)
+  quantum-observer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.quantum
+    container_name: agentkit-quantum
+    ports:
+      - "8888:8888"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - THREAT_DETECTION_THRESHOLD=0.7
+    depends_on:
+      - mcp-orchestrator
+    restart: unless-stopped
+    profiles:
+      - quantum  # Optional service
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: agentkit-network
+    driver: bridge
