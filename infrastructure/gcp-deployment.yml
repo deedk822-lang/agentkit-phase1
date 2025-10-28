@@ -1,526 +1,149 @@
-# Quantum Observer - Google Cloud Platform Deployment
-# Production-ready MCP server on GCP Free Tier
-# Cost: $0/month (within free tier limits)
-
 apiVersion: v1
-kind: ConfigMap
+kind: Namespace
 metadata:
-  name: quantum-observer-config
-data:
-  # GCP Free Tier Configuration
-  PROJECT_ID: "quantum-observer-prod"
-  REGION: "us-central1"
-  ZONE: "us-central1-a"
-  MACHINE_TYPE: "e2-micro"  # Free tier eligible
-  
-  # Application Configuration
-  MCP_SERVER_PORT: "443"
-  GROQ_API_ENDPOINT: "https://api.groq.com/openai/v1/chat/completions"
-  MISTRAL_API_ENDPOINT: "https://api.mistral.ai/v1/chat/completions"
-  
-  # Security Configuration
-  ENABLE_SSL: "true"
-  CORS_ORIGINS: "https://qo.deedk822.com,https://*.wordpress.com"
-  RATE_LIMIT: "100/hour"
-  
+  name: pcp-prod
 ---
-# Cloud Build Configuration
-apiVersion: cloudbuild/v1
-kind: Build
-metadata:
-  name: quantum-observer-build
-spec:
-  source:
-    repoSource:
-      projectId: quantum-observer-prod
-      repoName: agentkit-phase1
-      branchName: main
-      dir: server/
-  
-  steps:
-  # Build MCP server container
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'build',
-      '-t', 'gcr.io/$PROJECT_ID/quantum-observer-mcp:$COMMIT_SHA',
-      '-t', 'gcr.io/$PROJECT_ID/quantum-observer-mcp:latest',
-      '--build-arg', 'NODE_ENV=production',
-      '--build-arg', 'MCP_VERSION=2.0.0',
-      '.'
-    ]
-  
-  # Push to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'push', 
-      'gcr.io/$PROJECT_ID/quantum-observer-mcp:$COMMIT_SHA'
-    ]
-  
-  # Deploy to Compute Engine
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-    - '-c'
-    - |
-      # Create instance template
-      gcloud compute instance-templates create quantum-observer-template \
-        --machine-type=e2-micro \
-        --network-tier=STANDARD \
-        --maintenance-policy=MIGRATE \
-        --provisioning-model=STANDARD \
-        --service-account=quantum-observer-sa@$PROJECT_ID.iam.gserviceaccount.com \
-        --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append \
-        --image-family=cos-stable \
-        --image-project=cos-cloud \
-        --boot-disk-size=30GB \
-        --boot-disk-type=pd-standard \
-        --boot-disk-device-name=quantum-observer-boot \
-        --container-image=gcr.io/$PROJECT_ID/quantum-observer-mcp:$COMMIT_SHA \
-        --container-restart-policy=always \
-        --container-env=NODE_ENV=production,PORT=8080,PROJECT_ID=$PROJECT_ID \
-        --tags=quantum-observer,http-server,https-server \
-        --metadata=enable-oslogin=true
-      
-      # Update managed instance group
-      gcloud compute instance-groups managed set-instance-template \
-        quantum-observer-mig \
-        --template=quantum-observer-template \
-        --zone=us-central1-a
-      
-      # Rolling update
-      gcloud compute instance-groups managed rolling-action start-update \
-        quantum-observer-mig \
-        --version=template=quantum-observer-template \
-        --zone=us-central1-a \
-        --max-surge=1 \
-        --max-unavailable=0
-
-  substitutions:
-    _ENVIRONMENT: 'production'
-    
-  options:
-    logging: CLOUD_LOGGING_ONLY
-    machineType: 'E2_HIGHCPU_8'
-    substitutionOption: 'ALLOW_LOOSE'
-    
----
-# Terraform Infrastructure Configuration
-apiVersion: terraform/v1
-kind: Configuration
-metadata:
-  name: quantum-observer-infrastructure
-spec:
-  # Provider Configuration
-  provider "google" {
-    project = var.project_id
-    region  = var.region
-    zone    = var.zone
-  }
-  
-  # Variables
-  variable "project_id" {
-    description = "GCP Project ID"
-    type        = string
-    default     = "quantum-observer-prod"
-  }
-  
-  variable "region" {
-    description = "GCP Region"
-    type        = string
-    default     = "us-central1"
-  }
-  
-  variable "zone" {
-    description = "GCP Zone"
-    type        = string
-    default     = "us-central1-a"
-  }
-  
-  # VPC Network
-  resource "google_compute_network" "quantum_observer_vpc" {
-    name                    = "quantum-observer-vpc"
-    auto_create_subnetworks = false
-    description             = "VPC for Quantum Observer MCP server"
-  }
-  
-  # Subnet
-  resource "google_compute_subnetwork" "quantum_observer_subnet" {
-    name          = "quantum-observer-subnet"
-    ip_cidr_range = "10.0.1.0/24"
-    region        = var.region
-    network       = google_compute_network.quantum_observer_vpc.id
-    
-    log_config {
-      aggregation_interval = "INTERVAL_10_MIN"
-      flow_sampling       = 0.5
-      metadata            = "INCLUDE_ALL_METADATA"
-    }
-  }
-  
-  # Firewall Rules
-  resource "google_compute_firewall" "quantum_observer_https" {
-    name    = "quantum-observer-https"
-    network = google_compute_network.quantum_observer_vpc.name
-    
-    allow {
-      protocol = "tcp"
-      ports    = ["443", "8080"]
-    }
-    
-    source_ranges = ["0.0.0.0/0"]
-    target_tags   = ["quantum-observer"]
-    
-    log_config {
-      metadata = "INCLUDE_ALL_METADATA"
-    }
-  }
-  
-  # Health Check
-  resource "google_compute_health_check" "quantum_observer_health" {
-    name               = "quantum-observer-health"
-    check_interval_sec = 30
-    timeout_sec        = 10
-    
-    http_health_check {
-      port         = 8080
-      request_path = "/health"
-    }
-  }
-  
-  # Instance Template (Free Tier)
-  resource "google_compute_instance_template" "quantum_observer_template" {
-    name_prefix  = "quantum-observer-"
-    machine_type = "e2-micro"  # Free tier eligible
-    region       = var.region
-    
-    disk {
-      source_image = "cos-cloud/cos-stable"
-      auto_delete  = true
-      boot         = true
-      disk_size_gb = 30  # Free tier limit
-      disk_type    = "pd-standard"
-    }
-    
-    network_interface {
-      network    = google_compute_network.quantum_observer_vpc.name
-      subnetwork = google_compute_subnetwork.quantum_observer_subnet.name
-      
-      access_config {
-        network_tier = "STANDARD"  # Lower cost tier
-      }
-    }
-    
-    service_account {
-      email  = google_service_account.quantum_observer_sa.email
-      scopes = [
-        "https://www.googleapis.com/auth/devstorage.read_only",
-        "https://www.googleapis.com/auth/logging.write",
-        "https://www.googleapis.com/auth/monitoring.write",
-      ]
-    }
-    
-    tags = ["quantum-observer", "https-server"]
-    
-    metadata = {
-      enable-oslogin = "true"
-      cos-metrics-enabled = "true"
-      
-      gce-container-declaration = yamlencode({
-        spec = {
-          containers = [{
-            name  = "quantum-observer-mcp"
-            image = "gcr.io/${var.project_id}/quantum-observer-mcp:latest"
-            
-            ports = [{
-              containerPort = 8080
-              protocol     = "TCP"
-            }]
-            
-            env = [
-              {
-                name  = "NODE_ENV"
-                value = "production"
-              },
-              {
-                name  = "PORT"
-                value = "8080"
-              },
-              {
-                name  = "PROJECT_ID"
-                value = var.project_id
-              }
-            ]
-            
-            resources = {
-              requests = {
-                memory = "256Mi"
-                cpu    = "250m"
-              }
-              limits = {
-                memory = "512Mi"
-                cpu    = "500m"
-              }
-            }
-          }]
-          
-          restartPolicy = "Always"
-        }
-      })
-    }
-    
-    lifecycle {
-      create_before_destroy = true
-    }
-  }
-  
-  # Managed Instance Group
-  resource "google_compute_instance_group_manager" "quantum_observer_mig" {
-    name               = "quantum-observer-mig"
-    base_instance_name = "quantum-observer"
-    zone               = var.zone
-    target_size        = 1  # Free tier limit
-    
-    version {
-      instance_template = google_compute_instance_template.quantum_observer_template.id
-    }
-    
-    named_port {
-      name = "https"
-      port = 8080
-    }
-    
-    auto_healing_policies {
-      health_check      = google_compute_health_check.quantum_observer_health.id
-      initial_delay_sec = 300
-    }
-  }
-  
-  # Load Balancer Backend Service
-  resource "google_compute_backend_service" "quantum_observer_backend" {
-    name                  = "quantum-observer-backend"
-    protocol              = "HTTP"
-    port_name             = "https"
-    load_balancing_scheme = "EXTERNAL"
-    timeout_sec           = 30
-    
-    backend {
-      group = google_compute_instance_group_manager.quantum_observer_mig.instance_group
-    }
-    
-    health_checks = [google_compute_health_check.quantum_observer_health.id]
-    
-    log_config {
-      enable = true
-      sample_rate = 1.0
-    }
-  }
-  
-  # URL Map
-  resource "google_compute_url_map" "quantum_observer_url_map" {
-    name            = "quantum-observer-url-map"
-    default_service = google_compute_backend_service.quantum_observer_backend.id
-    
-    path_matcher {
-      name            = "quantum-observer-path-matcher"
-      default_service = google_compute_backend_service.quantum_observer_backend.id
-      
-      path_rule {
-        paths   = ["/mcp/*", "/tools/*", "/health"]
-        service = google_compute_backend_service.quantum_observer_backend.id
-      }
-    }
-  }
-  
-  # SSL Certificate
-  resource "google_compute_managed_ssl_certificate" "quantum_observer_ssl" {
-    name = "quantum-observer-ssl"
-    
-    managed {
-      domains = ["qo.deedk822.com"]
-    }
-  }
-  
-  # HTTPS Proxy
-  resource "google_compute_target_https_proxy" "quantum_observer_https_proxy" {
-    name             = "quantum-observer-https-proxy"
-    url_map          = google_compute_url_map.quantum_observer_url_map.id
-    ssl_certificates = [google_compute_managed_ssl_certificate.quantum_observer_ssl.id]
-  }
-  
-  # Global Forwarding Rule
-  resource "google_compute_global_forwarding_rule" "quantum_observer_forwarding_rule" {
-    name       = "quantum-observer-forwarding-rule"
-    target     = google_compute_target_https_proxy.quantum_observer_https_proxy.id
-    port_range = "443"
-    ip_address = google_compute_global_address.quantum_observer_ip.address
-  }
-  
-  # Static IP
-  resource "google_compute_global_address" "quantum_observer_ip" {
-    name = "quantum-observer-ip"
-  }
-  
-  # Service Account
-  resource "google_service_account" "quantum_observer_sa" {
-    account_id   = "quantum-observer-sa"
-    display_name = "Quantum Observer Service Account"
-    description  = "Service account for Quantum Observer MCP server"
-  }
-  
-  # IAM Bindings
-  resource "google_project_iam_member" "quantum_observer_logging" {
-    project = var.project_id
-    role    = "roles/logging.logWriter"
-    member  = "serviceAccount:${google_service_account.quantum_observer_sa.email}"
-  }
-  
-  resource "google_project_iam_member" "quantum_observer_monitoring" {
-    project = var.project_id
-    role    = "roles/monitoring.metricWriter"
-    member  = "serviceAccount:${google_service_account.quantum_observer_sa.email}"
-  }
-  
-  # Cloud SQL Instance (Optional)
-  resource "google_sql_database_instance" "quantum_observer_db" {
-    name             = "quantum-observer-db"
-    database_version = "POSTGRES_13"
-    region           = var.region
-    
-    settings {
-      tier                        = "db-f1-micro"  # Smallest instance
-      activation_policy          = "ALWAYS"
-      authorized_gae_applications = []
-      
-      disk_size         = 10
-      disk_type         = "PD_SSD"
-      disk_autoresize   = false
-      
-      backup_configuration {
-        enabled    = true
-        start_time = "03:00"
-      }
-      
-      ip_configuration {
-        ipv4_enabled    = true
-        authorized_networks {
-          name  = "quantum-observer-network"
-          value = "0.0.0.0/0"
-        }
-      }
-    }
-    
-    deletion_protection = false
-  }
-  
-  # Outputs
-  output "load_balancer_ip" {
-    value = google_compute_global_address.quantum_observer_ip.address
-    description = "The IP address of the load balancer"
-  }
-  
-  output "mcp_server_url" {
-    value = "https://qo.deedk822.com/mcp/v1"
-    description = "The URL of the MCP server"
-  }
-  
-  output "cost_estimate" {
-    value = "$0/month (within GCP Free Tier limits)"
-    description = "Monthly cost estimate"
-  }
-
----
-# Deployment Script
 apiVersion: v1
-kind: ConfigMap
+kind: ServiceAccount
 metadata:
-  name: deployment-script
-data:
-  deploy.sh: |
-    #!/bin/bash
-    set -e
-    
-    echo "🚀 Deploying Quantum Observer to GCP Free Tier..."
-    
-    # Set project
-    gcloud config set project quantum-observer-prod
-    
-    # Enable APIs
-    gcloud services enable compute.googleapis.com
-    gcloud services enable cloudbuild.googleapis.com
-    gcloud services enable containerregistry.googleapis.com
-    gcloud services enable sql-component.googleapis.com
-    
-    # Apply Terraform configuration
-    terraform init
-    terraform plan -out=tfplan
-    terraform apply tfplan
-    
-    # Build and deploy
-    gcloud builds submit --config cloudbuild.yaml .
-    
-    # Get load balancer IP
-    LB_IP=$(terraform output -raw load_balancer_ip)
-    echo "📡 Load Balancer IP: $LB_IP"
-    echo "🌐 MCP Server URL: https://qo.deedk822.com/mcp/v1"
-    echo "💰 Cost: $0/month (Free Tier)"
-    
-    # Wait for SSL certificate
-    echo "⏳ Waiting for SSL certificate provisioning..."
-    while true; do
-      STATUS=$(gcloud compute ssl-certificates describe quantum-observer-ssl --global --format="value(managed.status)")
-      if [ "$STATUS" = "ACTIVE" ]; then
-        echo "✅ SSL certificate active"
-        break
-      fi
-      echo "⏳ SSL certificate status: $STATUS"
-      sleep 30
-    done
-    
-    echo "✅ Deployment complete!"
-    echo "🔗 Update DNS: qo.deedk822.com → $LB_IP"
-    echo "🎯 Test endpoint: curl https://qo.deedk822.com/health"
+  name: pcp-ksa # The KSA used for Workload Identity
+  namespace: pcp-prod
+  annotations:
+    # Replace with your GCP_PROJECT_ID
+    iam.gke.io/gcp-service-account: pcp-sa@your-gcp-project-id.iam.gserviceaccount.com
+---
+# Redis Deployment and Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: pcp-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: pcp-prod
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
+# MCP Orchestrator Deployment (Upgraded for Workload Identity & Secrets CSI)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-orchestrator
+  namespace: pcp-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mcp-orchestrator
+  template:
+    metadata:
+      labels:
+        app: mcp-orchestrator
+    spec:
+      serviceAccountName: pcp-ksa # Use the WI-enabled KSA
+      containers:
+      - name: orchestrator
+        # Replace with your image path
+        image: gcr.io/your-project-id/mcp-orchestrator:latest
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: pcp-secrets-volume
+          mountPath: "/mnt/secrets"
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: pcp-secrets-volume
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "pcp-gcp-secrets"
+---
+# Command Poller Deployment (Upgraded for HA, Workload Identity & Secrets CSI)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: command-poller
+  namespace: pcp-prod
+spec:
+  replicas: 3 # Now safe for High Availability due to Redis lock
+  selector:
+    matchLabels:
+      app: command-poller
+  template:
+    metadata:
+      labels:
+        app: command-poller
+    spec:
+      serviceAccountName: pcp-ksa # Use the WI-enabled KSA
+      containers:
+      - name: poller
+        # Replace with your image path
+        image: gcr.io/your-project-id/command-poller:latest
+        env: # Non-secret config can still go here
+        - name: REDIS_URL
+          value: "redis-service:6379"
+        volumeMounts:
+        - name: pcp-secrets-volume
+          mountPath: "/mnt/secrets"
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+      volumes:
+      - name: pcp-secrets-volume
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "pcp-gcp-secrets"
+---
+# SecretProviderClass to link GCP Secret Manager to the CSI Driver
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: pcp-gcp-secrets
+  namespace: pcp-prod
+spec:
+  provider: gcp
+  parameters:
+    secrets: |
+      # Replace with your GCP_PROJECT_ID
+      - resourceName: "projects/your-gcp-project-id/secrets/notion-token/versions/latest"
+        fileName: "NOTION_TOKEN"
+      - resourceName: "projects/your-gcp-project-id/secrets/mcp-private-key/versions/latest"
+        fileName: "MCP_PRIVATE_KEY"
+      - resourceName: "projects/your-gcp-project-id/secrets/groq-api-key/versions/latest"
+        fileName: "GROQ_API_KEY"
+      - resourceName: "projects/your-gcp-project-id/secrets/mistral-api-key/versions/latest"
+        fileName: "MISTRAL_API_KEY"
+      - resourceName: "projects/your-gcp-project-id/secrets/google-doc-id/versions/latest"
+        fileName: "GOOGLE_DOC_ID"
 
-  monitor.sh: |
-    #!/bin/bash
-    
-    echo "📊 Quantum Observer Monitoring Dashboard"
-    echo "======================================"
-    
-    # Instance status
-    echo "🖥️  Instance Status:"
-    gcloud compute instances list --filter="name:quantum-observer*"
-    
-    # Load balancer health
-    echo "⚖️  Load Balancer Health:"
-    gcloud compute backend-services get-health quantum-observer-backend --global
-    
-    # SSL certificate status
-    echo "🔒 SSL Certificate Status:"
-    gcloud compute ssl-certificates describe quantum-observer-ssl --global --format="value(managed.status)"
-    
-    # Recent logs
-    echo "📋 Recent Logs:"
-    gcloud logging read "resource.type=gce_instance AND resource.labels.instance_name:quantum-observer" --limit=10
-    
-    # Cost estimate
-    echo "💰 Cost Status: $0/month (Free Tier)"
-    
-    # Free tier usage
-    echo "📈 Free Tier Usage:"
-    echo "   ✅ Compute: e2-micro instance (744 hours/month limit)"
-    echo "   ✅ Storage: 30GB persistent disk (30GB limit)"
-    echo "   ✅ Network: <1GB/month egress (1GB limit)"
-    
-  cleanup.sh: |
-    #!/bin/bash
-    
-    echo "🧹 Cleaning up Quantum Observer deployment..."
-    
-    # Destroy Terraform resources
-    terraform destroy -auto-approve
-    
-    # Delete container images
-    gcloud container images list --repository=gcr.io/quantum-observer-prod
-    gcloud container images delete --quiet --force-delete-tags gcr.io/quantum-observer-prod/quantum-observer-mcp
-    
-    echo "✅ Cleanup complete!"
