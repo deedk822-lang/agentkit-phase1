@@ -1,0 +1,95 @@
+# AgentKit Phase 1 - Python Dependencies
+# Complete system requirements for Quantum Observer 3.0 and Production Control Plane
+
+# Core AI and ML Libraries
+groq>=0.8.0
+anthropic>=0.25.0
+mistralai>=0.4.0
+openai>=1.35.0
+
+# Web Framework and API
+flask>=3.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+starlette>=0.27.0
+requests>=2.31.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+
+# Database and Caching
+redis>=5.0.0
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
+
+# Kubernetes and Cloud
+kubernetes>=28.1.0
+google-cloud-secret-manager>=2.18.0
+google-cloud-container>=2.44.0
+google-auth>=2.23.0
+
+# Monitoring and Logging
+prometheus-client>=0.19.0
+structlog>=23.2.0
+loguru>=0.7.0
+
+# Security and Encryption
+cryptography>=41.0.0
+pyjwt>=2.8.0
+
+# GitHub Integration
+PyGithub>=2.1.0
+github3.py>=4.0.0
+
+# Notion API
+notion-client>=2.2.0
+
+# Testing and Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.6.0
+
+# Utilities
+python-dotenv>=1.0.0
+click>=8.1.0
+rich>=13.6.0
+tqdm>=4.66.0
+pydantic>=2.4.0
+
+# Async Support
+aiohttp>=3.9.0
+aiofiles>=23.2.0
+
+# Date and Time
+python-dateutil>=2.8.0
+pytz>=2023.3
+
+# JSON and YAML
+PyYAML>=6.0
+jsonschema>=4.19.0
+
+# Production WSGI Server
+gunicorn>=21.2.0
+
+# Additional Dependencies for specific components
+# WordPress integration
+requests-oauthlib>=1.3.0
+
+# Google Apps Script bridge
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+
+# Monte Carlo simulations
+scipy>=1.11.0
+numpy>=1.24.0
+
+# Enterprise monitoring
+statsd>=4.0.0
+
+# HTTP client with timeout support
+httpx>=0.24.0
