@@ -1,6 +1,6 @@
-const axios = require('axios');
+import axios from 'axios';
 
-module.exports = {
+export default {
   metadata: {
     name: 'Campaign Starter',
     description: 'Launch marketing campaigns across multiple channels',

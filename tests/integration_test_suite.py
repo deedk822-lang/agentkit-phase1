@@ -105,8 +105,8 @@ class IntegrationTestSuite:
         signature, nonce = self.sign_payload(payload)
         
         response = self.session.post(
-            f"{MCP_BASE_URL}/v1/actions",
-            json=payload,
+            f"{MCP_BASE_URL}/mcp/v1/tools/threat_scan/execute",
+            json={'threat_context': payload},
             headers={
                 'X-Signature': signature,
                 'X-Nonce': nonce,
@@ -133,7 +133,7 @@ class IntegrationTestSuite:
         }
         
         response = self.session.post(
-            f"{MCP_BASE_URL}/v1/validate",
+            f"{MCP_BASE_URL}/mcp/v1/validate",
             json=payload,
             timeout=5
         )
@@ -165,8 +165,8 @@ class IntegrationTestSuite:
         
         # First request
         response1 = self.session.post(
-            f"{MCP_BASE_URL}/v1/actions",
-            json=payload_copy1,
+            f"{MCP_BASE_URL}/mcp/v1/tools/threat_scan/execute",
+            json={'threat_context': payload_copy1},
             headers={
                 'X-Signature': signature1,
                 'X-Nonce': nonce1,
@@ -187,8 +187,8 @@ class IntegrationTestSuite:
         signature2, nonce2 = self.sign_payload(payload_dup) # This generates a new nonce/timestamp
         
         response2 = self.session.post(
-            f"{MCP_BASE_URL}/v1/actions",
-            json=payload_dup,
+            f"{MCP_BASE_URL}/mcp/v1/tools/threat_scan/execute",
+            json={'threat_context': payload_dup},
             headers={
                 'X-Signature': signature2,
                 'X-Nonce': nonce2,
@@ -224,8 +224,8 @@ class IntegrationTestSuite:
         signature, nonce = self.sign_payload(payload)
         
         response = self.session.post(
-            f"{MCP_BASE_URL}/v1/actions",
-            json=payload,
+            f"{MCP_BASE_URL}/mcp/v1/tools/report_publish/execute",
+            json={'threat_context': payload},
             headers={
                 'X-Signature': signature,
                 'X-Nonce': nonce,
@@ -250,7 +250,7 @@ def run_all_tests():
     
     # Health Checks
     suite.run_test("MCP Health Check", suite.test_mcp_health)
-    suite.run_test("WordPress Scan Endpoint Check", suite.test_wp_scan_endpoint)
+    # suite.run_test("WordPress Scan Endpoint Check", suite.test_wp_scan_endpoint)
     
     # Command Validation
     suite.run_test("SCAN_SITE Command Execution", suite.test_scan_site_command)

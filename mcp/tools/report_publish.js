@@ -1,7 +1,7 @@
-const axios = require('axios');
-const { createHash } = require('crypto');
+import axios from 'axios';
+import { createHash } from 'crypto';
 
-module.exports = {
+export default {
   metadata: {
     name: 'Report Publisher',
     description: 'Generate and publish executive security reports',
