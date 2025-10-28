@@ -1,10 +1,10 @@
-const axios = require('axios');
-const { createHash } = require('crypto');
+import axios from 'axios';
+import { createHash } from 'crypto';
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
-module.exports = {
+export default {
   metadata: {
     name: 'Threat Scanner',
     description: 'Groq-powered threat detection with sub-200ms response',

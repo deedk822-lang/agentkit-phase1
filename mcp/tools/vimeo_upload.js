@@ -1,7 +1,7 @@
-const axios = require('axios');
-const FormData = require('form-data');
+import axios from 'axios';
+import FormData from 'form-data';
 
-module.exports = {
+export default {
   metadata: {
     name: 'Vimeo Upload Manager',
     description: 'Automated video upload and management for marketing content',

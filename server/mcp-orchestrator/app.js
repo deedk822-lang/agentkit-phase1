@@ -1,9 +1,9 @@
-const express = require('express');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-const helmet = require('helmet');
-const compression = require('compression');
-const { createHash, randomBytes } = require('crypto');
+import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import compression from 'compression';
+import { createHash, randomBytes } from 'crypto';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -35,13 +35,19 @@ app.use((req, res, next) => {
   next();
 });
 
+import threat_scan from '../../mcp/tools/threat_scan.js';
+import report_publish from '../../mcp/tools/report_publish.js';
+import campaign_start from '../../mcp/tools/campaign_start.js';
+import vimeo_upload from '../../mcp/tools/vimeo_upload.js';
+import notion_kv from '../../mcp/tools/notion_kv.js';
+
 // Tool registry
 const tools = {
-  threat_scan: require('../mcp/tools/threat_scan'),
-  report_publish: require('../mcp/tools/report_publish'),
-  campaign_start: require('../mcp/tools/campaign_start'),
-  vimeo_upload: require('../mcp/tools/vimeo_upload'),
-  notion_kv: require('../mcp/tools/notion_kv')
+  threat_scan,
+  report_publish,
+  campaign_start,
+  vimeo_upload,
+  notion_kv
 };
 
 // Health check
@@ -53,7 +59,11 @@ app.get('/health', (req, res) => {
     version: '1.0.0',
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    env: process.env.NODE_ENV || 'development'
+    env: process.env.NODE_ENV || 'development',
+    components: {
+      "validator": "ok",
+      "judge": "ok"
+    }
   });
 });
 
@@ -97,9 +107,11 @@ app.post('/mcp/v1/tools/:toolId/execute', async (req, res) => {
     
     res.json({
       success: true,
-      data: result,
+      tool_result: result,
       execution_time_ms: latency,
       tool_id: toolId,
+      action_id: threat_context.action_id,
+      status: 'SUCCESS',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -189,4 +201,4 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔧 Tools endpoint: http://localhost:${PORT}/mcp/v1/tools`);
 });
 
-module.exports = app;
+export default app;

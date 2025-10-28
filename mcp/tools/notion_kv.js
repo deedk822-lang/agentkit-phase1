@@ -1,10 +1,10 @@
-const axios = require('axios');
-const { createHash } = require('crypto');
+import axios from 'axios';
+import { createHash } from 'crypto';
 
 const NOTION_API_BASE = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
 
-module.exports = {
+export default {
   metadata: {
     name: 'Notion Key-Value Store',
     description: 'Notion-powered feature flags, policies, and audit ledger',
