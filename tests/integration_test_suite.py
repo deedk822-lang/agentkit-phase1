@@ -237,27 +237,24 @@ class IntegrationTestSuite:
         assert response.status_code == 200, f"Action failed: {response.text}"
         
         data = response.json()
-        if os.getenv('MISTRAL_API_KEY'):
-            assert 'judge_decisions' in data, "Missing judge decisions"
-            assert len(data['judge_decisions']) >= 3, "Expected at least 3 judges"
+        assert 'judge_decisions' in data, "Missing judge decisions"
+        assert len(data['judge_decisions']) >= 3, "Expected at least 3 judges"
 
-            for decision in data['judge_decisions']:
-                assert 'judge_id' in decision
-                assert 'approved' in decision
-                assert 'rationale' in decision
-        else:
-            assert data['status'] == 'SUCCESS', f"Expected SUCCESS when no judge is configured, got: {data['status']}"
+        for decision in data['judge_decisions']:
+            assert 'judge_id' in decision
+            assert 'approved' in decision
+            assert 'rationale' in decision
 
 def run_all_tests():
     suite = IntegrationTestSuite()
     
     # Health Checks
     suite.run_test("MCP Health Check", suite.test_mcp_health)
-    # suite.run_test("WordPress Scan Endpoint Check", suite.test_wp_scan_endpoint)
+    suite.run_test("WordPress Scan Endpoint Check", suite.test_wp_scan_endpoint)
     
     # Command Validation
     suite.run_test("SCAN_SITE Command Execution", suite.test_scan_site_command)
-    # suite.run_test("Validation Only Endpoint", suite.test_validation_only)
+    suite.run_test("Validation Only Endpoint", suite.test_validation_only)
     
     # Idempotency
     suite.run_test("Duplicate Action Handling", suite.test_duplicate_action_handling)
